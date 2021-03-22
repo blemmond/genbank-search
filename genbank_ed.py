@@ -1,97 +1,67 @@
-#!/usr/bin/env python3
+
+#!/usr/bin/env python
 # coding: utf-8
 
+#In[]
 from Bio import Entrez, SeqIO
-from Bio.SeqUtils.CheckSum import seguid
+from Bio.Blast import NCBIWWW, NCBIXML
 
-# configuration
-Entrez.email = "curiousgeorge@ufl.edu"
+# adapted from: https://biopython.readthedocs.io/en/latest/chapter_blast.html
+#example: result_handle = NCBIWWW.qblast("blastn", "nt", "8332116")
 
-# prompt user for organism and number of results desired
-# query = input("Enter organism name: ")
-# usermax = input("Enter maximum number of results: ")
-# gene = input("Enter gene of interest: ")
+#open a fasta file with a SINGLE query sequence (for now) [will try later with a 'multi_query.fasta']
+record = SeqIO.read("solo_query.fasta", format="fasta")
+print("got fasta")
 
-# TODO: For development
-query = "cantharellus"
-usermax = 100
-gene = "TAACTAGGATTCCCCCAGTAACTGCGAGTGAAGAGGGAAAAGCTCATCATTGGAATCTGGCAGCGTTGCGCTGTCCGAGTTGTAGATGAGAAGAGTGGGTCATCTGGACTGCGTGGTGTCCAAGTACAATAGGCCGTCAGTGGGACATCATAGAGGGTGACAATCCCGTCCTTGATACCAACGTACGAGTCCGTTATGATGCCTATCTCGGAGAGTCGAGCAGTTTGGGATTTGCTGCTTAAACATGGGAGGTAGATTCCTTCTAAAGCTAAATACAGGCAAGAGACCGATAGAGAACAAGTACCGCAAGGGAAAGATGAAATAGAACTCTGTGAAGGGAGTCAAAAGACGTGAAATTGTTGCGAGAGAAGCGATTCAAGTCAGCGTAGCTAGGCCCATCAAGCCTCGTCGCTTTGGACTAGCTTTGCCAGCGGTCTTGTCTCTACTAATCTTTATAGATACTTGACAACAAAGAACAACGTGCCCTGCTCGGTCTAACGGGCAGGACTCTCCCTTGGGGGGGCCCANTGGCNTGGCTGGTGGAATGGCTTGCAGTCGACCCGTCTTGAAACACGGACCAAGGAGTCTAACATGTGTGCGAGTATAATGGTGGCAAACCCGTATGCGCAAAGAAAGTGATAGCCTTATTGGNTGAGAATGGCCTGATGACCAGACAAGCAATATCATGTTCCTCGTACGGTCNTTGCCGANGTCCCGTGGTCAGATCCCATGGACATGGAGTTAGAGCATACATGCTANGACCCGANAGATGGTGAACTATGCCTGGACAAAGCGAAGCCNAAGGAAACTCTGGTGGAGGCTTGTAGCGATTCTGACGTGCAAATCGATCGTCTGATCTG"
+#blast that sequence in the nucleotide database and store 50 results as 'result_handle' which is by default in XML
+result_handle = NCBIWWW.qblast("blastn", "nt", record.seq)
 
-# send query to Entrez nucleotide database
-handle = Entrez.esearch(db="nucleotide", term=query, field="organism", retmax=usermax)
-record = Entrez.read(handle)
-handle.close()
+results = NCBIXML.read(result_handle)
+print("got blast results")
 
-# get the 'IDList' field from the results
-ids = record["IdList"]
+# Make list of genbank IDS for blast results #
 
-# function to get sequences from the genbank IDs returned from the search and write to 'query.fastas'
-def get_sequences(ids):
-    with open("query.fasta", "w") as out_file:
-        for seq_id in ids:
-            handle = Entrez.efetch(
-                db="nucleotide", id=seq_id, rettype="fasta", retmode="text", retmax=1
-            )
-            out_file.write(handle.read())  # add data to end of file
-    handle.close()
+#save result output as an XML file so that you can check the results
+with open("solo_query_blast2.xml", "w") as out_handle:
+    out_handle.write(results())
+    result_handle.close()
 
+print("wrote xml")
 
-get_sequences(ids)
+# In[]
+#PARSE XML
+#from https://biopython.readthedocs.io/en/latest/chapter_blast.html#sec-parsing-blast
 
-# function to get genbank data from the genbank IDs returned from the search and write to 'query_gb.txt'
-def get_gb(ids):
-    with open("query_gb.txt", "w") as out_file:
-        for seq_id in ids:
-            handle = Entrez.efetch(
-                db="nucleotide", id=seq_id, rettype="genbank", retmode="text", retmax=1
-            )
-            out_file.write(handle.read())  # add data to end of file
-    handle.close()
+#blast_record = NCBIXML.read(result_handle) #can also use NCBI.parse() if you have multiple fasta query results
 
+# USING A TEST XML FILE because the blast results are very slow with this method...
+dummy_handle = open("test.xml", 'r')
+dummy_records = list(NCBIXML.parse(dummy_handle)) #can also make list
 
-get_gb(ids)
+#store blast result IDs in list 'results_ID'
+results_ID = []
+for alignment in dummy_records[0].alignments:
+    results_ID.append(alignment.accession)
 
-# PART 2 - parsing the metadata from the sequences returned from our search, printing matching records...
-# my_seqlist = []
-# for seq_record in SeqIO.parse("query.fasta", "fasta"):
-#     my_seqlist.append(seq_record)
-my_seqlist = [seq_record for seq_record in SeqIO.parse("query.fasta", "fasta")]
+print(results_ID[0:5])
+    
 
-# make new fasta file for seqs matching that gene
-with open("second.fasta", "w") as out_file:
-    for seq_record in my_seqlist:
-        if gene in seq_record.description:
-            out_file.write(">" + str(seq_record.id) + "\n")
-            out_file.write(str(seq_record.seq) + "\n")
+#In[]
+#GET GENBANK FILE FOR RESULTS
+from Bio import Entrez
+Entrez.email = 'curiousgeorge@ufl.edu'
+
+open('dummy_results_gb.txt','w')
+for gb_ID in results_ID:
+    gb_handle = Entrez.efetch(db="nucleotide", id=gb_ID, rettype="gb", retmode="text",retmax=1)     
+    local_file=open('dummy_results_gb.txt','a') #a = append mode
+    local_file.write(gb_handle.read()) #add data to end of file
+
+gb_handle.close()
 
 
-# Code adapted from Biopython help forums and adapted from work in the Biopython Cookbook Change et al 2020
-
-# FIXME: NONE OF THIS WORKS?
-
-# runs a loop to check if there are any duplicate sequences in the file
-def remove_duplicates(records):
-    check_sequences = set()
-    for record in records:
-        checksum = seguid(record.seq)
-        if checksum in check_sequences:
-            print(f"Removing duplicates {record.id} into outfile")
-            continue
-        check_sequences.add(checksum)
-        yield record
-        if record.id == record.seq:
-            # if there are no duplicates a message will print no duplicates
-            print("No duplicates!")
 
 
-saved_sequences = remove_duplicates(SeqIO.parse("second.fasta", "fasta"))
-count = SeqIO.write(saved_sequences, "final.fasta", "fasta")
-print(f"Number of remaining sequences: {count}")
 
-# read the new file and display the gene ids
 
-# print("Unique designations are: ")
-
-# final fasta will have non-duplicated sequences
-for seq_record in SeqIO.parse("final.fasta", "fasta"):
-    print(seq_record.id)
+# %%
